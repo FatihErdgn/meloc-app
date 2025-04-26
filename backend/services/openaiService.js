@@ -72,15 +72,40 @@ class OpenAIService {
         messages: [
           {
             role: "system",
-            content: "Sen bir bilgi ağı uzmanısın. İki kavram arasındaki ilişkiyi analiz et."
+            content: `Sen bir bilgi ağı uzmanısın. İki kavram arasındaki ilişkiyi dikkatlice analiz et.
+            
+            Sadece aşağıdaki ilişki türlerinden birini seçmelisin:
+            - CONTAINS (İçerir): Bir kavram diğerini içerir/kapsar
+            - IS_PART_OF (Parçasıdır): Bir kavram diğerinin parçasıdır
+            - IS_A (Türüdür): Bir kavram diğerinin alt türüdür
+            - DEPENDS_ON (Bağlıdır): Bir kavram diğerine bağımlıdır
+            - SIMILAR_TO (Benzerdir): İki kavram benzerdir
+            - OPPOSITE_OF (Zıttıdır): İki kavram birbirinin zıttıdır
+            - RELATED_TO (İlişkilidir): Sadece yukarıdaki kategorilere uymayan ilişkiler için kullan
+            
+            ÖNEMLİ: "RELATED_TO" ilişki türü, sadece diğer spesifik türler uygun olmadığında ve kavramlar arasında GERÇEKLİK VE DOĞRULUK temelinde anlamlı bir bağlantı olduğunda kullanılmalıdır.
+            
+            Aralarında gerçekten hiçbir mantıklı ilişki bulunmayan kavramlar için kesinlikle "RELATED_TO" İLİŞKİSİ KULLANMA.
+            Geniş veya zorlama bağlantılar kurma. Örneğin "döner" ve "trigonometri" arasında anlamlı bir ilişki yoktur.
+            
+            Gerçekten ilişkisiz kavramlarda yanıtın şöyle olmalıdır:
+            {
+              "relation": "RELATED_TO",
+              "strength": 0.1,
+              "description": "Anlamlı bir ilişki bulunamadı"
+            }
+            
+            Verilen iki kavramın mantıklı bir ilişkisi olmadığından eminsen, ilişki gücünü 0.1 olarak belirle.`
           },
           {
             role: "user",
             content: `"${concept1}" ve "${concept2}" kavramları arasındaki ilişkiyi analiz et. 
+            İlişkisiz veya çok zorlama bir bağlantı ise, bunu açıkça belirt.
+            
             Aşağıdaki JSON formatında yanıt ver:
             {
-              "relation": "İlişki türü (örn: 'içerir', 'türüdür', 'kullanır', 'benzerdir')",
-              "strength": 0 ile 1 arası ilişki gücü (0.1 - çok zayıf, 1.0 - çok güçlü),
+              "relation": "CONTAINS, IS_PART_OF, IS_A, DEPENDS_ON, SIMILAR_TO, OPPOSITE_OF veya RELATED_TO türlerinden biri olmalı",
+              "strength": 0 ile 1 arası ilişki gücü (0.1 - çok zayıf/ilişkisiz, 1.0 - çok güçlü),
               "description": "İlişkinin kısa açıklaması (maksimum 100 karakter)"
             }`
           }
@@ -89,20 +114,41 @@ class OpenAIService {
       });
 
       try {
-        return JSON.parse(response.choices[0].message.content);
+        const parsed = JSON.parse(response.choices[0].message.content);
+        
+        // İlişki türünü doğrula ve düzelt
+        const validRelationTypes = ["CONTAINS", "IS_PART_OF", "IS_A", "DEPENDS_ON", "SIMILAR_TO", "OPPOSITE_OF", "RELATED_TO"];
+        if (!validRelationTypes.includes(parsed.relation.toUpperCase())) {
+          parsed.relation = "RELATED_TO";
+        } else {
+          parsed.relation = parsed.relation.toUpperCase();
+        }
+        
+        // İlişki gücünü kontrol et - çok zayıf ilişkileri ele al
+        if (parsed.relation === "RELATED_TO" && parsed.strength <= 0.3) {
+          // İlişki açıklamasını kontrol et
+          const lowStrengthKeywords = ["bulunamadı", "ilişki yok", "bağlantı yok", "zayıf", "zorla", "belirsiz"];
+          
+          if (lowStrengthKeywords.some(keyword => parsed.description.toLowerCase().includes(keyword))) {
+            parsed.strength = 0.1; // İlişki gücünü minimum yap
+            parsed.description = "Anlamlı bir ilişki bulunamadı";
+          }
+        }
+        
+        return parsed;
       } catch (parseError) {
         console.error("JSON parse hatası:", parseError);
         return {
-          relation: "belirsiz",
-          strength: 0.5,
-          description: "İlişki belirlenemedi"
+          relation: "RELATED_TO",
+          strength: 0.1,
+          description: "İlişki belirlenemedi (parse hatası)"
         };
       }
     } catch (error) {
       console.error(`Kavram Analizi Hatası: ${error.message}`);
       return {
-        relation: "hata",
-        strength: 0,
+        relation: "RELATED_TO",
+        strength: 0.1,
         description: "API hatası nedeniyle ilişki analiz edilemedi"
       };
     }
