@@ -16,6 +16,7 @@ export interface Node {
   y?: number;
   fx?: number | null;
   fy?: number | null;
+  type?: string;
 }
 
 /**
@@ -26,10 +27,12 @@ export interface Link {
   target: string | Node;
   value: number;
   type?: string;
+  relation?: string;
   description?: string;
   strengthClass?: string;
   label?: string;
   color?: string;
+  strength?: number;
 }
 
 /**
@@ -121,6 +124,6 @@ export const RELATION_TYPE_LABELS: Record<string, string> = {
   'IS_A': 'Türüdür',
   'DEPENDS_ON': 'Bağlıdır',
   'SIMILAR_TO': 'Benzerdir',
-  'OPPOSITE_OF': 'Karşıtıdır',
+  'OPPOSITE_OF': 'Zıttıdır',
   'RELATED_TO': 'İlişkilidir'
 }; 

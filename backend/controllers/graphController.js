@@ -1,6 +1,7 @@
 import openaiService from '../services/openaiService.js';
 import neo4jService from '../services/neo4jService.js';
 import * as similarityUtils from '../utils/similarityUtils.js';
+import * as relationUtils from '../utils/relationUtils.js';
 
 /**
  * Kavram grafiği kontrolcüsü
@@ -56,11 +57,20 @@ class GraphController {
                 concept2.text
               );
               
+              // İlişki kurulmalı mı kontrol et
+              if (!relationUtils.shouldCreateRelation(similarity, relationDetails.strength, 0.25)) {
+                console.log(`Düşük benzerlik/ilişki gücü nedeniyle atlandı: ${concept1.text} - ${concept2.text} (${similarity}/${relationDetails.strength})`);
+                continue;
+              }
+              
+              // İlişki türünün doğrulanması
+              const relationType = relationUtils.validateRelationType(relationDetails.relation);
+              
               // Kavram ilişkisi veritabanına kaydedilir
               const relationResult = await neo4jService.createRelation(
                 concept1.text,
                 concept2.text,
-                relationDetails.relation.toUpperCase(),
+                relationType,
                 relationDetails.strength,
                 { description: relationDetails.description }
               );
@@ -69,7 +79,9 @@ class GraphController {
                 source: concept1.text,
                 target: concept2.text,
                 similarity,
-                ...relationDetails,
+                relation: relationType,
+                strength: relationDetails.strength,
+                description: relationDetails.description,
                 ...relationResult
               });
             }
@@ -94,8 +106,8 @@ class GraphController {
     } catch (error) {
       console.error("Grafik oluşturma hatası:", error);
       res.status(500).json({ 
-        error: "Grafik oluşturulurken bir hata oluştu",
-        details: error.message
+        error: "Grafik oluşturulurken bir hata oluştu", 
+        details: error.message 
       });
     }
   }
@@ -201,12 +213,15 @@ class GraphController {
       // İlişki analizi yapılır
       const relation = await openaiService.analyzeConceptRelation(concept1, concept2);
       
+      // İlişki türünün doğrulanması
+      const relationType = relationUtils.validateRelationType(relation.relation);
+      
       res.json({
         concept1,
         concept2,
         cosineSimilarity: directSimilarity,
         dbSimilarity: dbSimilarity.similarity,
-        relation: relation.relation,
+        relation: relationType,
         relationStrength: relation.strength,
         description: relation.description,
         relationClass: similarityUtils.classifyRelationStrength(relation.strength)

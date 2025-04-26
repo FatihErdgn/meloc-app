@@ -72,14 +72,26 @@ class OpenAIService {
         messages: [
           {
             role: "system",
-            content: "Sen bir bilgi ağı uzmanısın. İki kavram arasındaki ilişkiyi analiz et."
+            content: `Sen bir bilgi ağı uzmanısın. İki kavram arasındaki ilişkiyi analiz et.
+            
+            Sadece aşağıdaki ilişki türlerinden birini seçmelisin:
+            - CONTAINS (İçerir): Bir kavram diğerini içerir/kapsar
+            - IS_PART_OF (Parçasıdır): Bir kavram diğerinin parçasıdır
+            - IS_A (Türüdür): Bir kavram diğerinin alt türüdür
+            - DEPENDS_ON (Bağlıdır): Bir kavram diğerine bağımlıdır
+            - SIMILAR_TO (Benzerdir): İki kavram benzerdir
+            - OPPOSITE_OF (Zıttıdır): İki kavram birbirinin zıttıdır
+            - RELATED_TO (İlişkilidir): Sadece yukarıdaki kategorilere uymayan ilişkiler için kullan
+            
+            "RELATED_TO" ilişki türü, sadece diğer daha spesifik türler uygun olmadığında son çare olarak kullanılmalıdır.
+            İlişkisiz kavramlar için yanıltıcı bağlantılar KURMA. Kavramlar arasında gerçekten anlamlı bir ilişki yoksa düşük ilişki gücü (0.1-0.3) ile belirt.`
           },
           {
             role: "user",
             content: `"${concept1}" ve "${concept2}" kavramları arasındaki ilişkiyi analiz et. 
             Aşağıdaki JSON formatında yanıt ver:
             {
-              "relation": "İlişki türü (örn: 'içerir', 'türüdür', 'kullanır', 'benzerdir')",
+              "relation": "CONTAINS, IS_PART_OF, IS_A, DEPENDS_ON, SIMILAR_TO, OPPOSITE_OF veya RELATED_TO türlerinden biri olmalı",
               "strength": 0 ile 1 arası ilişki gücü (0.1 - çok zayıf, 1.0 - çok güçlü),
               "description": "İlişkinin kısa açıklaması (maksimum 100 karakter)"
             }`
@@ -89,11 +101,21 @@ class OpenAIService {
       });
 
       try {
-        return JSON.parse(response.choices[0].message.content);
+        const parsed = JSON.parse(response.choices[0].message.content);
+        
+        // İlişki türünü doğrula ve düzelt
+        const validRelationTypes = ["CONTAINS", "IS_PART_OF", "IS_A", "DEPENDS_ON", "SIMILAR_TO", "OPPOSITE_OF", "RELATED_TO"];
+        if (!validRelationTypes.includes(parsed.relation.toUpperCase())) {
+          parsed.relation = "RELATED_TO";
+        } else {
+          parsed.relation = parsed.relation.toUpperCase();
+        }
+        
+        return parsed;
       } catch (parseError) {
         console.error("JSON parse hatası:", parseError);
         return {
-          relation: "belirsiz",
+          relation: "RELATED_TO",
           strength: 0.5,
           description: "İlişki belirlenemedi"
         };
@@ -101,7 +123,7 @@ class OpenAIService {
     } catch (error) {
       console.error(`Kavram Analizi Hatası: ${error.message}`);
       return {
-        relation: "hata",
+        relation: "RELATED_TO",
         strength: 0,
         description: "API hatası nedeniyle ilişki analiz edilemedi"
       };
